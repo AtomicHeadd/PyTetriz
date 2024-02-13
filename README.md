@@ -1,6 +1,8 @@
-# PyTetris
+# PyTetriz
 
 CLI上で動くパズルゲームです
+
+```python game.py```
 
 # 既知のバグ
 
