@@ -1,16 +1,10 @@
 import time
-from enum import Enum
 import os, sys
-import queue
 import threading
 import keyboard
-import glob
 from pathlib import Path
 import random
 import numpy as np
-
-# 10x20 ただし、20マス目まで表示だが21マス目を用意
-# 0は左上
 
 STATE_EMPTY = "　"
 STATE_FIXED_BLOCK = "🔳"
@@ -18,7 +12,6 @@ STATE_FALLING_BLOCK = "🔲"
 STATE_CLEARED = "💯"
 GUIDE_LINE_BLOCK = "🌟"
 FRAME = "🔷"
-
 
 HEIGHT = 20
 WIDTH = 9
@@ -28,6 +21,7 @@ INPUT_SLEEP_SEC = 0.05
 FALLING_SEC = 0.5
     
 def load_minos(dir_path: Path):
+    """ミノをファイルから読み込む"""
     def convert_to_state(line: str):
         conversion = {"0": STATE_EMPTY, "1": STATE_FALLING_BLOCK}
         return [conversion[char] for char in line if char in conversion]
@@ -39,9 +33,10 @@ def load_minos(dir_path: Path):
     return minos
 
 def check_falling_mino_movable(direction_x, direction_y):
+    """ミノが特定の方向に動けるか確認する"""
     for y in range(HEIGHT):
         for x in range(WIDTH):
-            if state[y][x] is not STATE_FALLING_BLOCK: 
+            if state[y][x] is not STATE_FALLING_BLOCK:
                 continue
             if y+direction_y < 0 or y+direction_y >=HEIGHT: 
                 return False
@@ -52,6 +47,7 @@ def check_falling_mino_movable(direction_x, direction_y):
     return True
 
 def move_falling_mino(direction_x, direction_y):
+    """ミノを動かす"""
     # 必ず動く方向から捜査する
     columns = [i for i in range(WIDTH)]
     if direction_x > 0: columns = columns[::-1]
@@ -70,6 +66,7 @@ def move_falling_mino(direction_x, direction_y):
     debug_str = f"{mino_center_x}, {mino_center_y}"
     
 def rotate_falling_mino(rotate_right=True):
+    """ミノを回転させる"""
     global falling_mino_shape
     shape: np.array = np.array(falling_mino_shape)
     if rotate_right: new_shape = np.rot90(shape, 3)
@@ -100,21 +97,13 @@ def rotate_falling_mino(rotate_right=True):
     falling_mino_shape = new_shape
     
 def fix_mino():
+    """ミノを固定する"""
     for y in range(HEIGHT):
         for x in range(WIDTH):
             if state[y][x] == STATE_FALLING_BLOCK: state[y][x] = STATE_FIXED_BLOCK
 
-def render_screen(state):
-    os.system('cls')
-    for line in state:
-        output = [FRAME] + line + [FRAME]
-        print("".join(output), flush=True)
-    print(FRAME * (WIDTH + 2), flush=True)
-    print("score:", score, flush=True)
-    print(debug_str, flush=True)
-    sys.stdout.flush()
-
 def step_falling_mino():
+    """ミノを自由落下させる、落下できた場合Trueを返す"""
     if check_falling_mino_movable(0, 1):
         move_falling_mino(0, 1)
         return True
@@ -122,7 +111,9 @@ def step_falling_mino():
     return False
     
 def generate_mino(all_minos: list):
+    """新しいミノを生成する"""
     target_mino = random.choice(all_minos)
+    all_minos.remove(target_mino)
     start_x = WIDTH // 2
     for y in range(len(target_mino)):
         for x in range(len(target_mino[y])):
@@ -131,7 +122,8 @@ def generate_mino(all_minos: list):
     mino_center_y = (len(target_mino) / 2) + 0.5
     return target_mino, mino_center_x, mino_center_y
     
-def check_lines():
+def claer_line():
+    """消せる行を消す"""
     global score
     cleared_indexes = []
     for y in range(HEIGHT)[::-1]:
@@ -150,25 +142,40 @@ def check_lines():
         state.pop(line)
         state.insert(0, [STATE_EMPTY] * WIDTH)
     render_screen(state)
-    pass
 
 def receive_keyboard_input():
+    """キー入力を受け取る"""
     while True:
         event = keyboard.read_event()
         if event.event_type == keyboard.KEY_DOWN:
             key = event.name
-            process_keyboard_input(key)
-            # render_screen(state)
+            try:
+                process_keyboard_input(key)
+            except:
+                pass
 
 def process_keyboard_input(key):
-    if key == "a" and check_falling_mino_movable(-1, 0):
+    """キー入力を処理する"""
+    if key == "w":
+        rotate_falling_mino()
+    elif key == "a" and check_falling_mino_movable(-1, 0):
         move_falling_mino(-1, 0)
     elif key == "d" and check_falling_mino_movable(1, 0):
         move_falling_mino(1, 0)
-    elif key == "w":
-        rotate_falling_mino()
+
     elif key == "s" and check_falling_mino_movable(0, 1):
         move_falling_mino(0, 1)
+    
+def render_screen(state):
+    """画面を描画する"""
+    os.system('cls')
+    for line in state:
+        output = [FRAME] + line + [FRAME]
+        print("".join(output), flush=True)
+    print(FRAME * (WIDTH + 2), flush=True)
+    print("score:", score, flush=True)
+    print(debug_str, flush=True)
+    sys.stdout.flush()
     
 def game():
     global score
@@ -189,18 +196,21 @@ def game():
     input_thread.start()
     
     all_minos = load_minos(Path("minos"))
-    print(all_minos)
-    falling_mino_shape, mino_center_x, mino_center_y = generate_mino(all_minos)
+    remaining_minos = all_minos.copy()
+    falling_mino_shape, mino_center_x, mino_center_y = generate_mino(remaining_minos)
+    
     last_step_time = time.time()
     while True:
         render_screen(state)
         if time.time() - last_step_time > time_to_fall_step:
             is_steped = step_falling_mino()
-            check_lines()
+            claer_line()
             last_step_time = time.time()
         
             if not is_steped: 
-                falling_mino_shape, mino_center_x, mino_center_y = generate_mino(all_minos)
+                falling_mino_shape, mino_center_x, mino_center_y = generate_mino(remaining_minos)
+                if len(remaining_minos) == 0: 
+                    remaining_minos = all_minos.copy()
             
         time.sleep(1 / FRAME_RATE)
         
