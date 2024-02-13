@@ -32,7 +32,7 @@ def load_minos(dir_path: Path):
         minos.append([convert_to_state(line) for line in lines])
     return minos
 
-def check_falling_mino_movable(direction_x, direction_y):
+def is_falling_mino_movable(direction_x, direction_y):
     """ミノが特定の方向に動けるか確認する"""
     for y in range(HEIGHT):
         for x in range(WIDTH):
@@ -46,24 +46,31 @@ def check_falling_mino_movable(direction_x, direction_y):
                 return False
     return True
 
-def move_falling_mino(direction_x, direction_y):
-    """ミノを動かす"""
+def move_falling_mino(direction_x, direction_y, rt_state=False):
+    """ミノを動かす。rt_state=Trueの場合、stateに上書きしない"""
     # 必ず動く方向から捜査する
     columns = [i for i in range(WIDTH)]
     if direction_x > 0: columns = columns[::-1]
     
+    target_state = state
+    if rt_state:
+        target_state = [l.copy() for l in state]
+    
     for y in range(HEIGHT)[::-1]:
         for x in columns:
             if state[y][x] == STATE_FALLING_BLOCK:
-                state[y+direction_y][x+direction_x] = STATE_FALLING_BLOCK
-                state[y][x] = STATE_EMPTY
-    
+                target_state[y+direction_y][x+direction_x] = STATE_FALLING_BLOCK
+                target_state[y][x] = STATE_EMPTY
+    if rt_state:
+        return target_state
+        
     global mino_center_x
     global mino_center_y
     global debug_str
     mino_center_x += direction_x
     mino_center_y += direction_y
     debug_str = f"{mino_center_x}, {mino_center_y}"
+    
     
 def rotate_falling_mino(rotate_right=True):
     """ミノを回転させる"""
@@ -96,6 +103,14 @@ def rotate_falling_mino(rotate_right=True):
             state[start_y + y][start_x + x] = new_shape[y][x]
     falling_mino_shape = new_shape
     
+def get_drop_direction():
+    """何マス下に落とせるかを計算する"""
+    drop_height = 0
+    for drop_height in range(HEIGHT):
+        if not is_falling_mino_movable(0, drop_height):
+            break
+    return drop_height - 1
+    
 def fix_mino():
     """ミノを固定する"""
     for y in range(HEIGHT):
@@ -104,7 +119,7 @@ def fix_mino():
 
 def step_falling_mino():
     """ミノを自由落下させる、落下できた場合Trueを返す"""
-    if check_falling_mino_movable(0, 1):
+    if is_falling_mino_movable(0, 1):
         move_falling_mino(0, 1)
         return True
     fix_mino()
@@ -156,25 +171,43 @@ def receive_keyboard_input():
 
 def process_keyboard_input(key):
     """キー入力を処理する"""
-    if key == "w":
+    if key == "e":
         rotate_falling_mino()
-    elif key == "a" and check_falling_mino_movable(-1, 0):
+    elif key == "q":
+        rotate_falling_mino(False)
+    elif key == "a" and is_falling_mino_movable(-1, 0):
         move_falling_mino(-1, 0)
-    elif key == "d" and check_falling_mino_movable(1, 0):
+    elif key == "d" and is_falling_mino_movable(1, 0):
         move_falling_mino(1, 0)
-
-    elif key == "s" and check_falling_mino_movable(0, 1):
+    elif key == "s" and is_falling_mino_movable(0, 1):
         move_falling_mino(0, 1)
-    
+    elif key== "w":
+        drop_height = get_drop_direction()
+        move_falling_mino(0, drop_height)
+        
 def render_screen(state):
     """画面を描画する"""
+    # ガイド等を表示するので表示用に配列をコピーしておく
+    display_state = [l.copy() for l in state]
+    
+    try:
+        drop_height = get_drop_direction()
+        dropped_state = move_falling_mino(0, drop_height, True)
+        for x in range(WIDTH):
+            for y in range(HEIGHT):
+                if dropped_state[y][x] == STATE_FALLING_BLOCK and display_state[y][x] != STATE_FALLING_BLOCK:
+                    display_state[y][x] = GUIDE_LINE_BLOCK
+    except:
+        pass
+    
     os.system('cls')
-    for line in state:
+    for line in display_state:
         output = [FRAME] + line + [FRAME]
         print("".join(output), flush=True)
     print(FRAME * (WIDTH + 2), flush=True)
     print("score:", score, flush=True)
     print(debug_str, flush=True)
+    
     sys.stdout.flush()
     
 def game():
