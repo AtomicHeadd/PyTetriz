@@ -48,6 +48,8 @@ def is_falling_mino_movable(direction_x, direction_y):
 
 def move_falling_mino(direction_x, direction_y, rt_state=False):
     """ミノを動かす。rt_state=Trueの場合、stateに上書きしない"""
+    if direction_x == 0 and direction_y == 0: 
+        return
     # 必ず動く方向から捜査する
     columns = [i for i in range(WIDTH)]
     if direction_x > 0: columns = columns[::-1]
@@ -66,11 +68,8 @@ def move_falling_mino(direction_x, direction_y, rt_state=False):
         
     global mino_center_x
     global mino_center_y
-    global debug_str
     mino_center_x += direction_x
     mino_center_y += direction_y
-    debug_str = f"{mino_center_x}, {mino_center_y}"
-    
     
 def rotate_falling_mino(rotate_right=True):
     """ミノを回転させる"""
@@ -104,8 +103,13 @@ def rotate_falling_mino(rotate_right=True):
     falling_mino_shape = new_shape
     
 def get_drop_direction():
+    global debug_str
     """何マス下に落とせるかを計算する"""
     drop_height = 0
+    is_mino_exists = [STATE_FALLING_BLOCK in line for line in state]
+    if not any(is_mino_exists):
+        return 0
+    
     for drop_height in range(HEIGHT):
         if not is_falling_mino_movable(0, drop_height):
             break
@@ -125,10 +129,11 @@ def step_falling_mino():
     fix_mino()
     return False
     
-def generate_mino(all_minos: list):
+def generate_mino(mino_shape=None):
     """新しいミノを生成する"""
-    target_mino = random.choice(all_minos)
-    all_minos.remove(target_mino)
+    global remaining_minos
+    
+    target_mino = remaining_minos.pop(0) if mino_shape is None else mino_shape
     start_x = WIDTH // 2
     for y in range(len(target_mino)):
         for x in range(len(target_mino[y])):
@@ -139,7 +144,7 @@ def generate_mino(all_minos: list):
     
 def claer_line():
     """消せる行を消す"""
-    global score
+    global score, debug_str
     cleared_indexes = []
     for y in range(HEIGHT)[::-1]:
         is_line_filled = [block == STATE_FIXED_BLOCK for block in state[y]]
@@ -148,6 +153,7 @@ def claer_line():
                 state[y][x] = STATE_CLEARED
             cleared_indexes.append(y + len(cleared_indexes))
     if len(cleared_indexes) == 0: return
+    if len(cleared_indexes) == 4: debug_str = "FUCKIN TETRIZ BABY"
     
     score += 100 * len(cleared_indexes)
     render_screen(state)
@@ -156,7 +162,23 @@ def claer_line():
     for line in cleared_indexes:
         state.pop(line)
         state.insert(0, [STATE_EMPTY] * WIDTH)
+        debug_str = ""
     render_screen(state)
+    
+def hold_mino():
+    global holding_mino
+    global falling_mino_shape
+    global mino_center_x, mino_center_y
+    global debug_str
+    
+    generate_mino_shape = holding_mino
+    holding_mino = falling_mino_shape
+    debug_str = "holded!"
+    for x in range(WIDTH):
+        for y in range(HEIGHT):
+            if state[y][x] == STATE_FALLING_BLOCK:
+                state[y][x] = STATE_EMPTY
+    falling_mino_shape, mino_center_x, mino_center_y = generate_mino(generate_mino_shape)
 
 def receive_keyboard_input():
     """キー入力を受け取る"""
@@ -164,6 +186,7 @@ def receive_keyboard_input():
         event = keyboard.read_event()
         if event.event_type == keyboard.KEY_DOWN:
             key = event.name
+            # process_keyboard_input(key)
             try:
                 process_keyboard_input(key)
             except:
@@ -171,7 +194,11 @@ def receive_keyboard_input():
 
 def process_keyboard_input(key):
     """キー入力を処理する"""
-    if key == "e":
+    global is_holded
+    if key == "f" and not is_holded:
+        hold_mino()
+        is_holded = True
+    elif key == "e":
         rotate_falling_mino()
     elif key == "q":
         rotate_falling_mino(False)
@@ -187,6 +214,8 @@ def process_keyboard_input(key):
         
 def render_screen(state):
     """画面を描画する"""
+    global remaining_minos
+    global holding_mino
     # ガイド等を表示するので表示用に配列をコピーしておく
     display_state = [l.copy() for l in state]
     
@@ -201,12 +230,31 @@ def render_screen(state):
         pass
     
     os.system('cls')
+    output_lines = []
     for line in display_state:
         output = [FRAME] + line + [FRAME]
+        output_lines.append(output)
+    output_lines.append(FRAME * (WIDTH + 2))
+    output_lines.append(f"score: {score}")
+    output_lines.append(debug_str)
+    
+    # NEXTの描画
+    another_display = ["NEXT"]
+    for line in remaining_minos[0]:
+        another_display.append("　" + "".join(line))
+    
+    if holding_mino is not None:
+        another_display.append("")
+        another_display.append("HOLD")
+        for line in holding_mino:
+            another_display.append("　" + "".join(line))
+    
+    # NEXT, HOLDを元の行に足す
+    for i, l in enumerate(another_display):
+        output_lines[i] += l
+    
+    for output in output_lines:
         print("".join(output), flush=True)
-    print(FRAME * (WIDTH + 2), flush=True)
-    print("score:", score, flush=True)
-    print(debug_str, flush=True)
     
     sys.stdout.flush()
     
@@ -217,12 +265,17 @@ def game():
     global mino_center_x
     global mino_center_y
     global debug_str
+    global holding_mino
+    global remaining_minos
+    global is_holded
     
     time_to_fall_step = FALLING_SEC
     score = 0
     state = [[STATE_EMPTY]*WIDTH for _ in range(HEIGHT)]
     mino_center_x, mino_center_y = 0, 0
     debug_str = ""
+    holding_mino = None
+    is_holded = False
     
     input_thread = threading.Thread(target=receive_keyboard_input)
     input_thread.daemon = True
@@ -230,7 +283,8 @@ def game():
     
     all_minos = load_minos(Path("minos"))
     remaining_minos = all_minos.copy()
-    falling_mino_shape, mino_center_x, mino_center_y = generate_mino(remaining_minos)
+    random.shuffle(remaining_minos)
+    falling_mino_shape, mino_center_x, mino_center_y = generate_mino()
     
     last_step_time = time.time()
     while True:
@@ -241,9 +295,12 @@ def game():
             last_step_time = time.time()
         
             if not is_steped: 
-                falling_mino_shape, mino_center_x, mino_center_y = generate_mino(remaining_minos)
-                if len(remaining_minos) == 0: 
-                    remaining_minos = all_minos.copy()
+                falling_mino_shape, mino_center_x, mino_center_y = generate_mino()
+                is_holded = False
+                if len(remaining_minos) == 1:
+                    addition = all_minos.copy()
+                    random.shuffle(addition)
+                    remaining_minos += addition
             
         time.sleep(1 / FRAME_RATE)
         
