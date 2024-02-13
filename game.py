@@ -20,7 +20,7 @@ FRAME_RATE = 60
 INPUT_SLEEP_SEC = 0.05
 FALLING_SEC = 0.5
     
-def load_minos(dir_path: Path):
+def load_minos_from_directory(dir_path: Path):
     """ミノをファイルから読み込む"""
     def convert_to_state(line: str):
         conversion = {"0": STATE_EMPTY, "1": STATE_FALLING_BLOCK}
@@ -32,7 +32,7 @@ def load_minos(dir_path: Path):
         minos.append([convert_to_state(line) for line in lines])
     return minos
 
-def is_falling_mino_movable(direction_x, direction_y):
+def is_mino_movable(direction_x, direction_y):
     """ミノが特定の方向に動けるか確認する"""
     for y in range(HEIGHT):
         for x in range(WIDTH):
@@ -46,7 +46,7 @@ def is_falling_mino_movable(direction_x, direction_y):
                 return False
     return True
 
-def move_falling_mino(direction_x, direction_y, rt_state=False):
+def move_mino(direction_x, direction_y, rt_state=False):
     """ミノを動かす。rt_state=Trueの場合、stateに上書きしない"""
     if direction_x == 0 and direction_y == 0: 
         return
@@ -66,12 +66,11 @@ def move_falling_mino(direction_x, direction_y, rt_state=False):
     if rt_state:
         return target_state
         
-    global mino_center_x
-    global mino_center_y
+    global mino_center_x, mino_center_y
     mino_center_x += direction_x
     mino_center_y += direction_y
     
-def rotate_falling_mino(rotate_right=True):
+def rotate_mino(rotate_right=True):
     """ミノを回転させる"""
     global falling_mino_shape
     shape: np.array = np.array(falling_mino_shape)
@@ -111,7 +110,7 @@ def get_drop_direction():
         return 0
     
     for drop_height in range(HEIGHT):
-        if not is_falling_mino_movable(0, drop_height):
+        if not is_mino_movable(0, drop_height):
             break
     return drop_height - 1
     
@@ -121,10 +120,10 @@ def fix_mino():
         for x in range(WIDTH):
             if state[y][x] == STATE_FALLING_BLOCK: state[y][x] = STATE_FIXED_BLOCK
 
-def step_falling_mino():
+def step_mino():
     """ミノを自由落下させる、落下できた場合Trueを返す"""
-    if is_falling_mino_movable(0, 1):
-        move_falling_mino(0, 1)
+    if is_mino_movable(0, 1):
+        move_mino(0, 1)
         return True
     fix_mino()
     return False
@@ -167,8 +166,7 @@ def claer_line():
     
 def hold_mino():
     global holding_mino
-    global falling_mino_shape
-    global mino_center_x, mino_center_y
+    global falling_mino_shape, mino_center_x, mino_center_y
     global debug_str
     
     generate_mino_shape = holding_mino
@@ -199,29 +197,28 @@ def process_keyboard_input(key):
         hold_mino()
         is_holded = True
     elif key == "e":
-        rotate_falling_mino()
+        rotate_mino()
     elif key == "q":
-        rotate_falling_mino(False)
-    elif key == "a" and is_falling_mino_movable(-1, 0):
-        move_falling_mino(-1, 0)
-    elif key == "d" and is_falling_mino_movable(1, 0):
-        move_falling_mino(1, 0)
-    elif key == "s" and is_falling_mino_movable(0, 1):
-        move_falling_mino(0, 1)
+        rotate_mino(False)
+    elif key == "a" and is_mino_movable(-1, 0):
+        move_mino(-1, 0)
+    elif key == "d" and is_mino_movable(1, 0):
+        move_mino(1, 0)
+    elif key == "s" and is_mino_movable(0, 1):
+        move_mino(0, 1)
     elif key== "w":
         drop_height = get_drop_direction()
-        move_falling_mino(0, drop_height)
+        move_mino(0, drop_height)
         
 def render_screen(state):
     """画面を描画する"""
-    global remaining_minos
-    global holding_mino
+    global remaining_minos, holding_mino
     # ガイド等を表示するので表示用に配列をコピーしておく
     display_state = [l.copy() for l in state]
     
     try:
         drop_height = get_drop_direction()
-        dropped_state = move_falling_mino(0, drop_height, True)
+        dropped_state = move_mino(0, drop_height, True)
         for x in range(WIDTH):
             for y in range(HEIGHT):
                 if dropped_state[y][x] == STATE_FALLING_BLOCK and display_state[y][x] != STATE_FALLING_BLOCK:
@@ -259,15 +256,11 @@ def render_screen(state):
     sys.stdout.flush()
     
 def game():
-    global score
-    global state
-    global falling_mino_shape
-    global mino_center_x
-    global mino_center_y
-    global debug_str
-    global holding_mino
+    global score, state
+    global falling_mino_shape, mino_center_x, mino_center_y
+    global holding_mino, is_holded
     global remaining_minos
-    global is_holded
+    global debug_str
     
     time_to_fall_step = FALLING_SEC
     score = 0
@@ -281,7 +274,7 @@ def game():
     input_thread.daemon = True
     input_thread.start()
     
-    all_minos = load_minos(Path("minos"))
+    all_minos = load_minos_from_directory(Path("minos"))
     remaining_minos = all_minos.copy()
     random.shuffle(remaining_minos)
     falling_mino_shape, mino_center_x, mino_center_y = generate_mino()
@@ -290,7 +283,7 @@ def game():
     while True:
         render_screen(state)
         if time.time() - last_step_time > time_to_fall_step:
-            is_steped = step_falling_mino()
+            is_steped = step_mino()
             claer_line()
             last_step_time = time.time()
         
@@ -301,9 +294,7 @@ def game():
                     addition = all_minos.copy()
                     random.shuffle(addition)
                     remaining_minos += addition
-            
         time.sleep(1 / FRAME_RATE)
-        
 
 if __name__ == '__main__':
     game()
